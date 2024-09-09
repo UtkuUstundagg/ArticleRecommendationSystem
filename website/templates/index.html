@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kişisel Web Sayfası</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f9;
+            margin: 0;
+            padding: 0;
+            color: #333;
+        }
+        header {
+            background-color: #6200ea;
+            color: #fff;
+            padding: 1rem;
+            text-align: center;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 2rem auto;
+            padding: 1rem;
+            background-color: #fff;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+        h2 {
+            color: #6200ea;
+        }
+        .section {
+            margin-bottom: 2rem;
+        }
+        .profile-form label, .filter-form label {
+            display: block;
+            margin-bottom: 0.5rem;
+            color: #555;
+        }
+        .profile-form input, .filter-form input, .profile-form textarea {
+            width: 100%;
+            padding: 0.5rem;
+            margin-bottom: 1rem;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+        .btn {
+            background-color: #6200ea;
+            color: #fff;
+            padding: 0.5rem 1rem;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .btn:hover {
+            background-color: #3700b3;
+        }
+
+        .section {
+            margin-bottom: 20px;
+        }
+
+        .hidden {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+
+<header>
+    <h1>Makale Öneri Sistemi</h1>
+</header>
+
+<div class="container">
+
+    <section class="section">
+        <h2>Profil Yönetimi</h2>
+        <form class="profile-form">
+            <label for="username">Kullanıcı Adı</label>
+            <input type="text" id="username" name="username" required>
+
+            <label for="interests">İlgi Alanları</label>
+            <textarea id="interests" name="interests" rows="4" placeholder="İlgi alanlarınızı virgülle ayırarak giriniz."></textarea>
+
+            <button type="submit" class="btn">Profili Güncelle</button>
+        </form>
+    </section>
+
+    <section class="section">
+        <h2>FastText Önerileri</h2>
+        <ul id="fasttext-recommendations"></ul>
+
+        <h2>SCIBERT Önerileri</h2>
+        <ul id="scibert-recommendations"></ul>
+    </section>
+
+    <section class="section">
+        <h2>Makale Filtreleme</h2>
+        <form class="filter-form">
+            <label for="keyword">Anahtar Kelimeye Göre Filtrele</label>
+            <input type="text" id="keyword" name="keyword" placeholder="Makale başlığına göre ara">
+
+            <button type="submit" class="btn">Filtrele</button>
+        </form>
+    </section>
+
+    <section id="result" class="hidden">
+        <h3 id="title"></h3>
+        <p id="text"></p>
+    </section>
+
+</div>
+
+<script>
+    document.addEventListener("DOMContentLoaded", function() {
+        // Kullanıcı profilini yükle
+        fetch('/get_user_interests')
+            .then(response => response.json())
+            .then(data => {
+                if (data.preferences) {
+                    document.getElementById('interests').value = data.preferences;
+                    document.getElementById('username').value = data.username;
+                } else {
+                    console.error('Hata:', data.error);
+                }
+            })
+            .catch(error => console.error('Hata:', error));
+
+        // Önerileri yükle
+        function loadRecommendations() {
+            fetch('/get_recommendations')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.fasttext_titles && data.scibert_titles) {
+                        const fasttextList = document.getElementById('fasttext-recommendations');
+                        fasttextList.innerHTML = '';  // Mevcut önerileri temizle
+                        data.fasttext_titles.forEach(title => {
+                            const li = document.createElement('li');
+                            li.textContent = title;
+                            fasttextList.appendChild(li);
+                        });
+
+                        const scibertList = document.getElementById('scibert-recommendations');
+                        scibertList.innerHTML = '';  // Mevcut önerileri temizle
+                        data.scibert_titles.forEach(title => {
+                            const li = document.createElement('li');
+                            li.textContent = title;
+                            scibertList.appendChild(li);
+                        });
+                    } else {
+                        console.error('Hata:', data.error);
+                    }
+                })
+                .catch(error => console.error('Hata:', error));
+        }
+
+        loadRecommendations();  // Sayfa yüklendiğinde önerileri yükle
+
+        document.querySelector('.profile-form').addEventListener('submit', function(event) {
+            event.preventDefault();
+
+            const formData = new FormData(this);
+
+            const jsonData = {};
+            formData.forEach((value, key) => {
+                jsonData[key] = value;
+            });
+
+            fetch('/update_profile', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(jsonData)
+            })
+            .then(response => response.json())
+            .then(data => {
+                console.log(data);
+                loadRecommendations();  // Profil güncellendiğinde önerileri yeniden yükle
+            })
+            .catch(error => console.error('Hata:', error));
+        });
+    });
+
+    document.querySelector('.filter-form').addEventListener('submit', async function(event) {
+        event.preventDefault();
+
+        const keyword = document.getElementById('keyword').value;
+
+        try {
+            const response = await fetch(`/filter?keyword=${keyword}`);
+            const data = await response.json();
+
+            if (data.error) {
+                showError(data.error);
+            } else {
+                showArticle(data.article);
+            }
+        } catch (error) {
+            showError('Something went wrong. Please try again later.');
+        }
+    });
+
+    function showError(message) {
+        document.getElementById('result').classList.add('hidden');
+        alert(message);
+    }
+
+    function showArticle(article) {
+        document.getElementById('title').textContent = article.Title;
+        document.getElementById('text').textContent = article.Text;
+        document.getElementById('result').classList.remove('hidden');
+    }
+</script>
+
+
+</body>
+</html>
